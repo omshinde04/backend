@@ -1,55 +1,30 @@
-const Station = require("../models/Station");
+const pool = require("../config/db");
 
 exports.heartbeat = async (req, res) => {
     try {
+        const stationId = req.stationId;
 
-        // 1️⃣ Validate JWT injection
-        if (!req.stationId) {
-            console.error("Heartbeat Error: stationId missing from token");
-            return res.status(401).json({
-                message: "Unauthorized - Invalid token"
-            });
-        }
-
-        const station = await Station.findOne({ stationId: req.stationId });
-
-        if (!station) {
-            console.error("Heartbeat Error: Station not found:", req.stationId);
-            return res.status(404).json({
-                message: "Station not found"
-            });
-        }
-
-        // 2️⃣ Only update if needed
-        station.lastHeartbeat = new Date();
-
-        // Do NOT override OUTSIDE status here
-        // Only set ONLINE if currently OFFLINE
-        if (station.status === "OFFLINE") {
-            station.status = "ONLINE";
-        }
-
-        await station.save();
+        await pool.query(
+            `UPDATE tracking.stations
+             SET status = 'INSIDE',
+                 updated_at = NOW()
+             WHERE station_id = $1`,
+            [stationId]
+        );
 
         const io = req.app.get("io");
 
         if (io) {
             io.emit("statusUpdate", {
-                stationId: station.stationId,
-                status: station.status,
-                lastHeartbeat: station.lastHeartbeat
+                stationId,
+                status: "INSIDE"
             });
         }
 
-        return res.json({
-            message: "Heartbeat received",
-            status: station.status
-        });
+        res.json({ message: "Heartbeat received" });
 
     } catch (error) {
-        console.error("Heartbeat Server Error:", error);
-        return res.status(500).json({
-            message: "Server error"
-        });
+        console.error("Heartbeat Error:", error);
+        res.status(500).json({ message: "Server error" });
     }
 };
