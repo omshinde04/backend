@@ -106,15 +106,15 @@ exports.batchUpdateLocation = async (req, res) => {
         await client.query(
             `
             INSERT INTO tracking.current_location
-            (station_id, latitude, longitude, distance_meters, status, last_seen)
-            VALUES ($1,$2,$3,$4,$5,NOW())
-            ON CONFLICT (station_id)
-            DO UPDATE SET
-                latitude = EXCLUDED.latitude,
-                longitude = EXCLUDED.longitude,
-                distance_meters = EXCLUDED.distance_meters,
-                status = EXCLUDED.status,
-                last_seen = NOW()
+(station_id, latitude, longitude, distance_meters, status, updated_at)
+VALUES ($1,$2,$3,$4,$5,NOW())
+ON CONFLICT (station_id)
+DO UPDATE SET
+    latitude = EXCLUDED.latitude,
+    longitude = EXCLUDED.longitude,
+    distance_meters = EXCLUDED.distance_meters,
+    status = EXCLUDED.status,
+    updated_at = NOW()
             `,
             [stationId, lastLat, lastLng, lastDistance, lastStatus]
         );
