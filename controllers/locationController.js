@@ -12,6 +12,7 @@ exports.updateLocation = async (req, res) => {
             });
         }
 
+        // Get station details
         const stationResult = await pool.query(
             "SELECT * FROM tracking.stations WHERE station_id = $1",
             [stationId]
@@ -25,14 +26,17 @@ exports.updateLocation = async (req, res) => {
 
         const station = stationResult.rows[0];
 
+        const lat = Number(latitude);
+        const lng = Number(longitude);
+
         const distance = getDistance(
             {
                 latitude: station.assigned_latitude,
                 longitude: station.assigned_longitude
             },
             {
-                latitude: Number(latitude),
-                longitude: Number(longitude)
+                latitude: lat,
+                longitude: lng
             }
         );
 
@@ -41,10 +45,11 @@ exports.updateLocation = async (req, res) => {
             status = "OUTSIDE";
         }
 
-        // Update live location table
+        // ✅ FIXED: using updated_at instead of last_seen
         await pool.query(
-            `INSERT INTO tracking.current_location
-            (station_id, latitude, longitude, distance_meters, status, last_seen)
+            `
+            INSERT INTO tracking.current_location
+            (station_id, latitude, longitude, distance_meters, status, updated_at)
             VALUES ($1,$2,$3,$4,$5,NOW())
             ON CONFLICT (station_id)
             DO UPDATE SET
@@ -52,33 +57,40 @@ exports.updateLocation = async (req, res) => {
                 longitude = EXCLUDED.longitude,
                 distance_meters = EXCLUDED.distance_meters,
                 status = EXCLUDED.status,
-                last_seen = NOW()`,
-            [stationId, latitude, longitude, distance, status]
+                updated_at = NOW()
+            `,
+            [stationId, lat, lng, distance, status]
         );
 
-        // Insert history log
+        // Insert into history
         await pool.query(
-            `INSERT INTO tracking.location_logs
+            `
+            INSERT INTO tracking.location_logs
             (station_id, latitude, longitude, distance_meters, status)
-            VALUES ($1,$2,$3,$4,$5)`,
-            [stationId, latitude, longitude, distance, status]
+            VALUES ($1,$2,$3,$4,$5)
+            `,
+            [stationId, lat, lng, distance, status]
         );
 
-        // Update main station status
+        // Update station table
         await pool.query(
-            `UPDATE tracking.stations
-             SET status = $1, updated_at = NOW()
-             WHERE station_id = $2`,
+            `
+            UPDATE tracking.stations
+            SET status = $1,
+                updated_at = NOW()
+            WHERE station_id = $2
+            `,
             [status, stationId]
         );
 
+        // 🔥 Emit socket event (LIVE UPDATE)
         const io = req.app.get("io");
 
         if (io) {
             io.emit("locationUpdate", {
                 stationId,
-                latitude,
-                longitude,
+                latitude: lat,
+                longitude: lng,
                 assignedLatitude: station.assigned_latitude,
                 assignedLongitude: station.assigned_longitude,
                 allowedRadiusMeters: station.allowed_radius_meters,
