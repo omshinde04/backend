@@ -1,4 +1,4 @@
-require("dotenv").config();
+//require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
@@ -12,19 +12,31 @@ const app = express();
 // =============================
 // MIDDLEWARE
 // =============================
-app.use(cors());
+//app.use(cors());
+app.use(cors({
+    origin: "*",
+    methods: ["GET", "POST"]
+}));
 app.use(express.json());
 
 // =============================
 // POSTGRES CONNECTION
 // =============================
+// const pool = new Pool({
+//     user: process.env.DB_USER,
+//     host: process.env.DB_HOST,
+//     database: process.env.DB_NAME,
+//     password: process.env.DB_PASSWORD,
+//     port: process.env.DB_PORT,
+// });
+
 const pool = new Pool({
-    user: process.env.DB_USER,
-    host: process.env.DB_HOST,
-    database: process.env.DB_NAME,
-    password: process.env.DB_PASSWORD,
-    port: process.env.DB_PORT,
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
+console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
 
 // Test DB connection
 pool.connect()
@@ -55,6 +67,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: "*",
+        methods: ["GET", "POST"]
     },
 });
 
