@@ -13,18 +13,12 @@ exports.batchUpdateLocation = async (req, res) => {
         const { records } = req.body;
         const stationId = req.stationId;
 
-        // Validation
         if (!records || !Array.isArray(records) || records.length === 0) {
-            return res.status(400).json({
-                message: "Records array required"
-            });
+            return res.status(400).json({ message: "Records array required" });
         }
 
-        // Safety limit (protect server)
         if (records.length > 100) {
-            return res.status(400).json({
-                message: "Batch size too large"
-            });
+            return res.status(400).json({ message: "Batch size too large" });
         }
 
         // Get station details
@@ -34,9 +28,7 @@ exports.batchUpdateLocation = async (req, res) => {
         );
 
         if (stationResult.rows.length === 0) {
-            return res.status(404).json({
-                message: "Station not found"
-            });
+            return res.status(404).json({ message: "Station not found" });
         }
 
         const station = stationResult.rows[0];
@@ -85,14 +77,13 @@ exports.batchUpdateLocation = async (req, res) => {
                 status
             );
 
-            // Save last record info for current_location update
             lastStatus = status;
             lastDistance = distance;
             lastLat = lat;
             lastLng = lng;
         }
 
-        // Bulk insert into history
+        // Insert history
         await client.query(
             `
             INSERT INTO tracking.location_logs
@@ -102,24 +93,24 @@ exports.batchUpdateLocation = async (req, res) => {
             insertParams
         );
 
-        // Update current location with latest record only
+        // Update current location
         await client.query(
             `
             INSERT INTO tracking.current_location
-(station_id, latitude, longitude, distance_meters, status, updated_at)
-VALUES ($1,$2,$3,$4,$5,NOW())
-ON CONFLICT (station_id)
-DO UPDATE SET
-    latitude = EXCLUDED.latitude,
-    longitude = EXCLUDED.longitude,
-    distance_meters = EXCLUDED.distance_meters,
-    status = EXCLUDED.status,
-    updated_at = NOW()
+            (station_id, latitude, longitude, distance_meters, status, updated_at)
+            VALUES ($1,$2,$3,$4,$5,NOW())
+            ON CONFLICT (station_id)
+            DO UPDATE SET
+                latitude = EXCLUDED.latitude,
+                longitude = EXCLUDED.longitude,
+                distance_meters = EXCLUDED.distance_meters,
+                status = EXCLUDED.status,
+                updated_at = NOW()
             `,
             [stationId, lastLat, lastLng, lastDistance, lastStatus]
         );
 
-        // Update station status
+        // Update station table
         await client.query(
             `
             UPDATE tracking.stations
@@ -131,6 +122,22 @@ DO UPDATE SET
         );
 
         await client.query("COMMIT");
+
+        // ==============================
+        // 🔥 SOCKET EMIT (CRITICAL FIX)
+        // ==============================
+        const io = req.app.get("io");
+
+        io.emit("locationUpdate", {
+            stationId,
+            latitude: lastLat,
+            longitude: lastLng,
+            distance: lastDistance,
+            status: lastStatus,
+            assignedLatitude: station.assigned_latitude,
+            assignedLongitude: station.assigned_longitude,
+            allowedRadiusMeters: station.allowed_radius_meters
+        });
 
         res.json({
             message: "Batch sync successful",
