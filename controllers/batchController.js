@@ -1,5 +1,5 @@
 const pool = require("../config/db");
-const { getDistance } = require("geolib"); e
+const { getDistance } = require("geolib");
 xports.batchUpdateLocation = async (req, res) => {
 
     const client = await pool.connect();
