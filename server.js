@@ -9,34 +9,45 @@ const { Pool } = require("pg");
 
 const app = express();
 
-/* =============================
-   MIDDLEWARE
-============================= */
+// =============================
+// MIDDLEWARE
+// =============================
+//app.use(cors());
 app.use(cors({
     origin: "*",
     methods: ["GET", "POST"]
 }));
 app.use(express.json());
 
-/* =============================
-   POSTGRES CONNECTION
-============================= */
+// =============================
+// POSTGRES CONNECTION
+// =============================
+// const pool = new Pool({
+//     user: process.env.DB_USER,
+//     host: process.env.DB_HOST,
+//     database: process.env.DB_NAME,
+//     password: process.env.DB_PASSWORD,
+//     port: process.env.DB_PORT,
+// });
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
-
 console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
 
+// Test DB connection
 pool.connect()
     .then(() => console.log("✅ PostgreSQL Connected"))
     .catch(err => console.error("❌ PostgreSQL Error:", err));
 
+// Make DB available in controllers
 app.set("db", pool);
-
-/* =============================
-   ROUTES
-============================= */
+// =============================
+// ROUTES
+// =============================
 const authRoutes = require("./routes/authRoutes");
 app.use("/api/auth", authRoutes);
 
@@ -44,18 +55,16 @@ const locationRoutes = require("./routes/locationRoutes");
 app.use("/api/location", locationRoutes);
 
 const batchRoutes = require("./routes/batchRoutes");
-app.use("/api/location", batchRoutes);
+app.use("/api/location", batchRoutes); // 👈 ADD THIS
 
 const heartbeatRoutes = require("./routes/heartbeatRoutes");
 app.use("/api/heartbeat", heartbeatRoutes);
 
-/* ✅ IMPORTANT — ADD THIS */
 const stationRoutes = require("./routes/stationRoutes");
 app.use("/api/stations", stationRoutes);
-
-/* =============================
-   HTTP + SOCKET.IO
-============================= */
+// =============================
+// HTTP + SOCKET.IO
+// =============================
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -67,19 +76,18 @@ const io = new Server(server, {
 
 app.set("io", io);
 
-/* =============================
-   OFFLINE DETECTION CRON
-   Runs every minute
-============================= */
+// =============================
+// OFFLINE DETECTION CRON
+// Runs every minute
+// =============================
 cron.schedule("* * * * *", async () => {
     try {
-
         const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
 
         const result = await pool.query(`
             UPDATE tracking.stations
             SET status = 'OFFLINE'
-            WHERE updated_at < $1
+            WHERE last_heartbeat < $1
             AND status != 'OFFLINE'
             RETURNING station_id
         `, [twoMinutesAgo]);
@@ -98,16 +106,17 @@ cron.schedule("* * * * *", async () => {
     }
 });
 
-/* =============================
-   ROOT TEST ROUTE
-============================= */
+
+// =============================
+// TEST ROUTE
+// =============================
 app.get("/", (req, res) => {
     res.send("Station Tracker Backend Running 🚀 (PostgreSQL)");
 });
 
-/* =============================
-   SOCKET CONNECTION
-============================= */
+// =============================
+// SOCKET CONNECTION
+// =============================
 io.on("connection", (socket) => {
     console.log("🟢 Client Connected:", socket.id);
 
@@ -116,9 +125,9 @@ io.on("connection", (socket) => {
     });
 });
 
-/* =============================
-   START SERVER
-============================= */
+// =============================
+// START SERVER
+// =============================
 const PORT = process.env.PORT || 5001;
 
 server.listen(PORT, () => {
