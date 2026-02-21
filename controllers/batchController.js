@@ -1,19 +1,12 @@
-const pool = require("../config/db");
-const { getDistance } = require("geolib");
-
-// ==============================
-// BATCH LOCATION SYNC
-// ==============================
 exports.batchUpdateLocation = async (req, res) => {
 
     const client = await pool.connect();
 
     try {
-
         const { records } = req.body;
         const stationId = req.stationId;
 
-        if (!records || !Array.isArray(records) || records.length === 0) {
+        if (!Array.isArray(records) || records.length === 0) {
             return res.status(400).json({ message: "Records array required" });
         }
 
@@ -21,13 +14,14 @@ exports.batchUpdateLocation = async (req, res) => {
             return res.status(400).json({ message: "Batch size too large" });
         }
 
-        // Get station details
         const stationResult = await client.query(
-            "SELECT * FROM tracking.stations WHERE station_id = $1",
+            `SELECT assigned_latitude, assigned_longitude, allowed_radius_meters
+             FROM tracking.stations 
+             WHERE station_id = $1`,
             [stationId]
         );
 
-        if (stationResult.rows.length === 0) {
+        if (!stationResult.rows.length) {
             return res.status(404).json({ message: "Station not found" });
         }
 
@@ -49,21 +43,20 @@ exports.batchUpdateLocation = async (req, res) => {
             const lat = Number(record.latitude);
             const lng = Number(record.longitude);
 
+            if (!lat || !lng || isNaN(lat) || isNaN(lng)) continue;
+
             const distance = getDistance(
                 {
                     latitude: station.assigned_latitude,
                     longitude: station.assigned_longitude
                 },
-                {
-                    latitude: lat,
-                    longitude: lng
-                }
+                { latitude: lat, longitude: lng }
             );
 
-            let status = "INSIDE";
-            if (distance > station.allowed_radius_meters) {
-                status = "OUTSIDE";
-            }
+            const status =
+                distance > station.allowed_radius_meters
+                    ? "OUTSIDE"
+                    : "INSIDE";
 
             insertValues.push(
                 `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
@@ -83,65 +76,55 @@ exports.batchUpdateLocation = async (req, res) => {
             lastLng = lng;
         }
 
-        // Insert history
-        await client.query(
-            `
-            INSERT INTO tracking.location_logs
-            (station_id, latitude, longitude, distance_meters, status)
-            VALUES ${insertValues.join(",")}
-            `,
-            insertParams
-        );
+        if (insertValues.length > 0) {
+            await client.query(
+                `INSERT INTO tracking.location_logs
+                 (station_id, latitude, longitude, distance_meters, status)
+                 VALUES ${insertValues.join(",")}`,
+                insertParams
+            );
+        }
 
-        // Update current location
         await client.query(
-            `
-            INSERT INTO tracking.current_location
-            (station_id, latitude, longitude, distance_meters, status, updated_at)
-            VALUES ($1,$2,$3,$4,$5,NOW())
-            ON CONFLICT (station_id)
-            DO UPDATE SET
+            `INSERT INTO tracking.current_location
+             (station_id, latitude, longitude, distance_meters, status, updated_at)
+             VALUES ($1,$2,$3,$4,$5,NOW())
+             ON CONFLICT (station_id)
+             DO UPDATE SET
                 latitude = EXCLUDED.latitude,
                 longitude = EXCLUDED.longitude,
                 distance_meters = EXCLUDED.distance_meters,
                 status = EXCLUDED.status,
-                updated_at = NOW()
-            `,
+                updated_at = NOW()`,
             [stationId, lastLat, lastLng, lastDistance, lastStatus]
         );
 
-        // Update station table
         await client.query(
-            `
-            UPDATE tracking.stations
-            SET status = $1,
-                updated_at = NOW()
-            WHERE station_id = $2
-            `,
+            `UPDATE tracking.stations
+             SET status = $1, updated_at = NOW()
+             WHERE station_id = $2`,
             [lastStatus, stationId]
         );
 
         await client.query("COMMIT");
 
-        // ==============================
-        // 🔥 SOCKET EMIT (CRITICAL FIX)
-        // ==============================
         const io = req.app.get("io");
-
-        io.emit("locationUpdate", {
-            stationId,
-            latitude: lastLat,
-            longitude: lastLng,
-            distance: lastDistance,
-            status: lastStatus,
-            assignedLatitude: station.assigned_latitude,
-            assignedLongitude: station.assigned_longitude,
-            allowedRadiusMeters: station.allowed_radius_meters
-        });
+        if (io) {
+            io.emit("locationUpdate", {
+                stationId,
+                latitude: lastLat,
+                longitude: lastLng,
+                distance: lastDistance,
+                status: lastStatus,
+                assignedLatitude: station.assigned_latitude,
+                assignedLongitude: station.assigned_longitude,
+                allowedRadiusMeters: station.allowed_radius_meters
+            });
+        }
 
         res.json({
             message: "Batch sync successful",
-            count: records.length
+            count: insertValues.length
         });
 
     } catch (error) {

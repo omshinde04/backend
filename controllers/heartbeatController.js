@@ -1,13 +1,10 @@
-const pool = require("../config/db");
-
 exports.heartbeat = async (req, res) => {
     try {
         const stationId = req.stationId;
 
         await pool.query(
             `UPDATE tracking.stations
-             SET status = 'INSIDE',
-                 updated_at = NOW()
+             SET updated_at = NOW()
              WHERE station_id = $1`,
             [stationId]
         );
@@ -17,7 +14,7 @@ exports.heartbeat = async (req, res) => {
         if (io) {
             io.emit("statusUpdate", {
                 stationId,
-                status: "INSIDE"
+                status: "ONLINE"
             });
         }
 
