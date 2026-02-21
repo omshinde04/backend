@@ -1,4 +1,6 @@
-exports.batchUpdateLocation = async (req, res) => {
+const pool = require("../config/db");
+const { getDistance } = require("geolib"); e
+xports.batchUpdateLocation = async (req, res) => {
 
     const client = await pool.connect();
 

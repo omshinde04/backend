@@ -1,3 +1,4 @@
+const pool = require("../config/db");
 exports.heartbeat = async (req, res) => {
     try {
         const stationId = req.stationId;
