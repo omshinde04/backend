@@ -7,6 +7,6 @@ const {
 } = require("../controllers/locationController");
 
 // 📡 Fetch All Stations (Including Offline)
-router.get("/all", authMiddleware, getAllStations);
+router.get("/all", getAllStations);
 
 module.exports = router;
