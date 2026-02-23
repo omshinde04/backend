@@ -57,7 +57,7 @@ app.use("/api/location", require("./routes/locationRoutes"));
 app.use("/api/location", require("./routes/batchRoutes"));
 app.use("/api/heartbeat", require("./routes/heartbeatRoutes"));
 app.use("/api/stations", require("./routes/stationRoutes"));
-app.use("/api/log", require("./routes/logRoutes"));
+app.use("/api", require("./routes/logRoutes"));
 
 /* =============================
    HTTP + SOCKET.IO
