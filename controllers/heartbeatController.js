@@ -9,7 +9,7 @@ exports.heartbeat = async (req, res) => {
              WHERE station_id = $1`,
             [stationId]
         );
-
+        console.log("Heartbeat received from:", stationId);
         const io = req.app.get("io");
 
         if (io) {

@@ -1,5 +1,6 @@
 const pool = require("../config/db");
 const { getDistance } = require("geolib");
+console.log("Batch request from:", stationId);
 exports.batchUpdateLocation = async (req, res) => {
 
     const client = await pool.connect();
