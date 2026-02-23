@@ -1,6 +1,6 @@
 const pool = require("../config/db");
 const { getDistance } = require("geolib");
-console.log("Batch request from:", stationId);
+
 exports.batchUpdateLocation = async (req, res) => {
 
     const client = await pool.connect();
@@ -8,6 +8,7 @@ exports.batchUpdateLocation = async (req, res) => {
     try {
         const { records } = req.body;
         const stationId = req.stationId;
+        console.log("Batch request from:", stationId);
 
         if (!Array.isArray(records) || records.length === 0) {
             return res.status(400).json({ message: "Records array required" });
