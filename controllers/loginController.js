@@ -3,10 +3,10 @@ const bcrypt = require("bcrypt");
 const pool = require("../config/db");
 
 exports.login = async (req, res) => {
-
-    const { email, password } = req.body;
-
     try {
+        console.log("REQ BODY:", req.body); // 🔥 debug log
+
+        const { email, password } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({
@@ -27,7 +27,7 @@ exports.login = async (req, res) => {
 
         const user = result.rows[0];
 
-        // 🔐 Secure bcrypt compare
+        // 🔐 Compare bcrypt hash
         const isMatch = await bcrypt.compare(password, user.password);
 
         if (!isMatch) {
@@ -36,6 +36,7 @@ exports.login = async (req, res) => {
             });
         }
 
+        // 🔐 Generate JWT
         const token = jwt.sign(
             {
                 userId: user.id,
@@ -43,21 +44,17 @@ exports.login = async (req, res) => {
                 role: user.role
             },
             process.env.JWT_SECRET,
-            {
-                expiresIn: "8h"
-            }
+            { expiresIn: "8h" }
         );
 
-        res.json({
+        return res.status(200).json({
             message: "Login successful",
             token
         });
 
     } catch (error) {
-
         console.error("Login Error:", error);
-
-        res.status(500).json({
+        return res.status(500).json({
             message: "Server error"
         });
     }
