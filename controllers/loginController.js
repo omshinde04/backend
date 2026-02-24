@@ -4,18 +4,23 @@ const pool = require("../config/db");
 
 exports.login = async (req, res) => {
     try {
-        console.log("REQ BODY:", req.body); // 🔥 debug log
+        // 🔥 Extract safely
+        let { email, password } = req.body;
 
-        const { email, password } = req.body;
-
+        // ✅ Basic validation
         if (!email || !password) {
             return res.status(400).json({
                 message: "Email and password required"
             });
         }
 
+        // ✅ Normalize input (VERY IMPORTANT)
+        email = email.trim().toLowerCase();
+        password = password.trim();
+
+        // ✅ Case-insensitive email match
         const result = await pool.query(
-            "SELECT * FROM users WHERE email=$1 AND is_active=true",
+            "SELECT id, email, password, role, is_active FROM users WHERE LOWER(email) = $1",
             [email]
         );
 
@@ -27,7 +32,14 @@ exports.login = async (req, res) => {
 
         const user = result.rows[0];
 
-        // 🔐 Compare bcrypt hash
+        // ✅ Check active
+        if (!user.is_active) {
+            return res.status(403).json({
+                message: "Account inactive"
+            });
+        }
+
+        // ✅ Compare bcrypt hash
         const isMatch = await bcrypt.compare(password, user.password);
 
         if (!isMatch) {
@@ -36,7 +48,7 @@ exports.login = async (req, res) => {
             });
         }
 
-        // 🔐 Generate JWT
+        // ✅ Generate JWT
         const token = jwt.sign(
             {
                 userId: user.id,
