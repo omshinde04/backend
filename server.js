@@ -59,6 +59,7 @@ app.use("/api/heartbeat", require("./routes/heartbeatRoutes"));
 app.use("/api/stations", require("./routes/stationRoutes"));
 app.use("/api", require("./routes/logRoutes"));
 app.use("/api/auth", require("./routes/loginRoute"));
+app.use("/api/geocode", require("./routes/geocodeRoute"));
 
 
 /* =============================
