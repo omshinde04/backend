@@ -1,11 +1,18 @@
 const jwt = require("jsonwebtoken");
-const pool = require("../config/db"); // adjust path if needed
+const bcrypt = require("bcrypt");
+const pool = require("../config/db");
 
 exports.login = async (req, res) => {
 
     const { email, password } = req.body;
 
     try {
+
+        if (!email || !password) {
+            return res.status(400).json({
+                message: "Email and password required"
+            });
+        }
 
         const result = await pool.query(
             "SELECT * FROM users WHERE email=$1 AND is_active=true",
@@ -20,8 +27,10 @@ exports.login = async (req, res) => {
 
         const user = result.rows[0];
 
-        // 🔥 TEMP plain password check
-        if (password !== user.password) {
+        // 🔐 Secure bcrypt compare
+        const isMatch = await bcrypt.compare(password, user.password);
+
+        if (!isMatch) {
             return res.status(401).json({
                 message: "Invalid credentials"
             });
@@ -34,7 +43,9 @@ exports.login = async (req, res) => {
                 role: user.role
             },
             process.env.JWT_SECRET,
-            { expiresIn: "8h" }
+            {
+                expiresIn: "8h"
+            }
         );
 
         res.json({
