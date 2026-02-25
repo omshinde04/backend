@@ -8,4 +8,4 @@ const {
 
 router.get("/all", adminAuth, getAllStations);
 
-module.exports = router;
+module.exports = router;    
