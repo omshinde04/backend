@@ -62,24 +62,29 @@ exports.batchUpdateLocation = async (req, res) => {
                     ? "OUTSIDE"
                     : "INSIDE";
 
-            insertValues.push(
-                `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
-            );
+            // ✅ INSERT ONLY WHEN OUTSIDE
+            if (status === "OUTSIDE") {
+                insertValues.push(
+                    `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
+                );
 
-            insertParams.push(
-                stationId,
-                lat,
-                lng,
-                distance,
-                status
-            );
+                insertParams.push(
+                    stationId,
+                    lat,
+                    lng,
+                    distance,
+                    status
+                );
+            }
 
+            // Always update latest state
             lastStatus = status;
             lastDistance = distance;
             lastLat = lat;
             lastLng = lng;
         }
 
+        // Insert OUTSIDE logs only
         if (insertValues.length > 0) {
             await client.query(
                 `INSERT INTO tracking.location_logs
@@ -89,6 +94,7 @@ exports.batchUpdateLocation = async (req, res) => {
             );
         }
 
+        // Always update current location
         await client.query(
             `INSERT INTO tracking.current_location
              (station_id, latitude, longitude, distance_meters, status, updated_at)
@@ -128,7 +134,7 @@ exports.batchUpdateLocation = async (req, res) => {
 
         res.json({
             message: "Batch sync successful",
-            count: insertValues.length
+            count: insertValues.length // now this counts only OUTSIDE records
         });
 
     } catch (error) {
