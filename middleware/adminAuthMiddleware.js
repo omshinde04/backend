@@ -12,7 +12,6 @@ module.exports = (req, res, next) => {
     }
 
     try {
-        // Expect: Bearer TOKEN
         const token = authHeader.startsWith("Bearer ")
             ? authHeader.split(" ")[1]
             : authHeader;
@@ -22,15 +21,17 @@ module.exports = (req, res, next) => {
             process.env.JWT_SECRET
         );
 
-        // ✅ STRICT ADMIN CHECK
-        if (!decoded || decoded.role !== "ADMIN") {
+        // ✅ ALLOW MULTIPLE ADMIN ROLES
+        const allowedRoles = ["ADMIN", "SUPER_ADMIN"];
+
+        if (!decoded || !allowedRoles.includes(decoded.role)) {
             return res.status(403).json({
                 success: false,
                 message: "Admin access required"
             });
         }
 
-        req.user = decoded; // attach user info
+        req.user = decoded;
         next();
 
     } catch (error) {
