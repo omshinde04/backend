@@ -1,4 +1,4 @@
-//require("dotenv").config();
+require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
@@ -57,11 +57,11 @@ app.use("/api/location", require("./routes/locationRoutes"));
 app.use("/api/location", require("./routes/batchRoutes"));
 app.use("/api/heartbeat", require("./routes/heartbeatRoutes"));
 app.use("/api/stations", require("./routes/stationRoutes"));
-app.use("/api", require("./routes/logRoutes"));
 app.use("/api/dashboard", require("./routes/loginRoute"));
 app.use("/api/geocode", require("./routes/geocodeRoute"));
 app.use("/api/analytics", require("./routes/analyticsRoute"));
 app.use("/api/logs", require("./routes/logsRoutes"));
+app.use("/api", require("./routes/logRoutes"));
 
 
 /* =============================
