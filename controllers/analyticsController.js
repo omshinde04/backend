@@ -1,28 +1,29 @@
 const pool = require("../config/db");
 
 /* =========================================
-   1️⃣ Live Status Distribution
-   ========================================= */
+   1️⃣ Live Status Distribution (ONLY ONLINE)
+========================================= */
 exports.getStatusDistribution = async (req, res) => {
     try {
+
         const result = await pool.query(`
-            SELECT status, COUNT(*)::int AS count
-            FROM tracking.current_location
-            GROUP BY status
+            SELECT 
+                COUNT(*) FILTER (WHERE status = 'INSIDE')::int AS inside,
+                COUNT(*) FILTER (WHERE status = 'OUTSIDE')::int AS outside,
+                COUNT(*) FILTER (WHERE status = 'OFFLINE')::int AS offline
+            FROM tracking.stations
         `);
 
-        const formatted = {
-            INSIDE: 0,
-            OUTSIDE: 0
-        };
-
-        result.rows.forEach(row => {
-            formatted[row.status] = row.count;
-        });
+        const row = result.rows[0] || {};
 
         return res.status(200).json({
             success: true,
-            data: formatted
+            data: {
+                INSIDE: row.inside || 0,
+                OUTSIDE: row.outside || 0,
+                OFFLINE: row.offline || 0,
+                TOTAL: (row.inside || 0) + (row.outside || 0)
+            }
         });
 
     } catch (error) {
@@ -37,12 +38,13 @@ exports.getStatusDistribution = async (req, res) => {
 
 /* =========================================
    2️⃣ Daily Violation Trend
-   ?days=7 (default 7 days)
-   ========================================= */
+   ?days=7 (max 90)
+========================================= */
 exports.getDailyViolations = async (req, res) => {
     try {
+
         const days = Math.min(
-            parseInt(req.query.days) || 7,
+            Math.max(parseInt(req.query.days) || 7, 1),
             90
         );
 
@@ -51,10 +53,10 @@ exports.getDailyViolations = async (req, res) => {
                 DATE(recorded_at) AS day,
                 COUNT(*)::int AS count
             FROM tracking.location_logs
-            WHERE recorded_at >= NOW() - INTERVAL '${days} days'
+            WHERE recorded_at >= NOW() - ($1 || ' days')::interval
             GROUP BY day
             ORDER BY day ASC
-        `);
+        `, [days]);
 
         return res.status(200).json({
             success: true,
@@ -74,12 +76,13 @@ exports.getDailyViolations = async (req, res) => {
 
 /* =========================================
    3️⃣ Top Violating Stations
-   ?limit=5
-   ========================================= */
+   ?limit=5 (max 20)
+========================================= */
 exports.getTopViolators = async (req, res) => {
     try {
+
         const limit = Math.min(
-            parseInt(req.query.limit) || 5,
+            Math.max(parseInt(req.query.limit) || 5, 1),
             20
         );
 
