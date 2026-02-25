@@ -61,6 +61,7 @@ app.use("/api", require("./routes/logRoutes"));
 app.use("/api/dashboard", require("./routes/loginRoute"));
 app.use("/api/geocode", require("./routes/geocodeRoute"));
 app.use("/api/analytics", require("./routes/analyticsRoute"));
+app.use("/api/logs", require("./routes/logsRoutes"));
 
 
 /* =============================
