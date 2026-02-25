@@ -6,12 +6,13 @@ module.exports = (req, res, next) => {
 
     if (!authHeader) {
         return res.status(401).json({
+            success: false,
             message: "No token provided"
         });
     }
 
     try {
-        // Expecting: Bearer TOKEN
+        // Expect: Bearer TOKEN
         const token = authHeader.startsWith("Bearer ")
             ? authHeader.split(" ")[1]
             : authHeader;
@@ -21,14 +22,23 @@ module.exports = (req, res, next) => {
             process.env.JWT_SECRET
         );
 
-        req.user = decoded;   // 👈 attach full user object
+        // ✅ STRICT ADMIN CHECK
+        if (!decoded || decoded.role !== "ADMIN") {
+            return res.status(403).json({
+                success: false,
+                message: "Admin access required"
+            });
+        }
+
+        req.user = decoded; // attach user info
         next();
 
     } catch (error) {
 
-        console.error("Admin JWT Error:", error);
+        console.error("Admin JWT Error:", error.message);
 
         return res.status(401).json({
+            success: false,
             message: "Invalid or expired token"
         });
     }

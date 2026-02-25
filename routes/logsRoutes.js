@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const logsController = require("../controllers/logsController");
-const auth = require("../middleware/auth");
+const adminAuth = require("../middleware/adminAuthMiddleware");
 
-router.get("/", auth, logsController.getLogs);
+router.get("/", adminAuth, logsController.getLogs);
 
 module.exports = router;

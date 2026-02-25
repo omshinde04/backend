@@ -6,14 +6,11 @@ const {
     getDailyViolations,
     getTopViolators
 } = require("../controllers/analyticsController");
-const auth = require("../middleware/auth");
 
-// Optional: protect with JWT middleware
-// const verifyToken = require("../middleware/verifyToken");
-// router.use(verifyToken);
+const adminAuth = require("../middleware/adminAuthMiddleware");
 
-router.get("/status", auth, getStatusDistribution);
-router.get("/daily", auth, getDailyViolations);
-router.get("/top", auth, getTopViolators);
+router.get("/status", adminAuth, getStatusDistribution);
+router.get("/daily", adminAuth, getDailyViolations);
+router.get("/top", adminAuth, getTopViolators);
 
 module.exports = router;
