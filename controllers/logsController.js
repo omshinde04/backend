@@ -2,7 +2,7 @@ const pool = require("../config/db");
 const { Parser } = require("json2csv");
 
 /* =====================================================
-   GET LOGS (Cursor Pagination - Production Ready)
+   GET LOGS (Timezone Safe + Cursor Pagination)
 ===================================================== */
 exports.getLogs = async (req, res) => {
     try {
@@ -30,43 +30,28 @@ exports.getLogs = async (req, res) => {
         let values = [stationId];
         let index = 2;
 
-        // Validate FROM date
+        /* ========= FROM FILTER ========= */
         if (from) {
-            const fromDate = new Date(from);
-            if (isNaN(fromDate.getTime())) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid 'from' date"
-                });
-            }
-            conditions.push(`recorded_at >= $${index++}`);
-            values.push(fromDate.toISOString());
+            conditions.push(`recorded_at >= $${index++}::timestamp`);
+            values.push(from); // DO NOT convert to ISO
         }
 
-        // Validate TO date
+        /* ========= TO FILTER ========= */
         if (to) {
-            const toDate = new Date(to);
-            if (isNaN(toDate.getTime())) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid 'to' date"
-                });
-            }
-            conditions.push(`recorded_at <= $${index++}`);
-            values.push(toDate.toISOString());
+            conditions.push(`recorded_at <= $${index++}::timestamp`);
+            values.push(to); // DO NOT convert to ISO
         }
 
+        /* ========= STATUS FILTER ========= */
         if (status) {
             conditions.push(`status = $${index++}`);
             values.push(status);
         }
 
+        /* ========= CURSOR PAGINATION ========= */
         if (lastTime) {
-            const cursorDate = new Date(lastTime);
-            if (!isNaN(cursorDate.getTime())) {
-                conditions.push(`recorded_at < $${index++}`);
-                values.push(cursorDate.toISOString());
-            }
+            conditions.push(`recorded_at < $${index++}::timestamp`);
+            values.push(lastTime);
         }
 
         const whereClause = `WHERE ${conditions.join(" AND ")}`;
@@ -107,7 +92,7 @@ exports.getLogs = async (req, res) => {
 
 
 /* =====================================================
-   EXPORT LOGS AS CSV (Optimized & Safe)
+   EXPORT LOGS AS CSV (Timezone Safe)
 ===================================================== */
 exports.exportLogsCSV = async (req, res) => {
     try {
@@ -126,22 +111,14 @@ exports.exportLogsCSV = async (req, res) => {
         let values = [stationId];
         let index = 2;
 
-        // Validate FROM
         if (from) {
-            const fromDate = new Date(from);
-            if (!isNaN(fromDate.getTime())) {
-                conditions.push(`recorded_at >= $${index++}`);
-                values.push(fromDate.toISOString());
-            }
+            conditions.push(`recorded_at >= $${index++}::timestamp`);
+            values.push(from);
         }
 
-        // Validate TO
         if (to) {
-            const toDate = new Date(to);
-            if (!isNaN(toDate.getTime())) {
-                conditions.push(`recorded_at <= $${index++}`);
-                values.push(toDate.toISOString());
-            }
+            conditions.push(`recorded_at <= $${index++}::timestamp`);
+            values.push(to);
         }
 
         if (status) {
@@ -167,7 +144,6 @@ exports.exportLogsCSV = async (req, res) => {
 
         const result = await pool.query(query, values);
 
-        // If no logs
         if (!result.rows.length) {
             return res.status(200).json({
                 success: true,
