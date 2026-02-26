@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
+const compression = require("compression");
 const { Server } = require("socket.io");
 const cron = require("node-cron");
 const { Pool } = require("pg");
@@ -17,12 +18,22 @@ app.set("trust proxy", 1);
 /* =============================
    MIDDLEWARE
 ============================= */
+
+// ✅ Fixed CORS (Allows PUT, DELETE, OPTIONS)
 app.use(cors({
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: "*", // Replace with frontend URL in production if needed
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-app.use(express.json());
+// ✅ Handle preflight properly
+app.options("*", cors());
+
+// ✅ Compression for performance
+app.use(compression());
+
+// ✅ JSON parser with safe limit
+app.use(express.json({ limit: "1mb" }));
 
 /* =============================
    POSTGRES CONNECTION
@@ -30,9 +41,9 @@ app.use(express.json());
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
-    max: 10,
+    max: 20, // increased for production stability
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000
+    connectionTimeoutMillis: 10000
 });
 
 console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
@@ -64,7 +75,6 @@ app.use("/api/logs", require("./routes/logsRoutes"));
 app.use("/api", require("./routes/logRoutes"));
 app.use("/api/admin/stations", require("./routes/stationsAdminRoutes"));
 
-
 /* =============================
    HTTP + SOCKET.IO
 ============================= */
@@ -73,15 +83,11 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: "*",
-        methods: ["GET", "POST"]
+        methods: ["GET", "POST", "PUT", "DELETE"]
     },
-
-    // 🔥 Important for stability
     pingInterval: 20000,
     pingTimeout: 20000,
-
     transports: ["websocket", "polling"],
-
     allowEIO3: true
 });
 
@@ -92,7 +98,6 @@ app.set("io", io);
 ============================= */
 cron.schedule("* * * * *", async () => {
     try {
-
         const result = await pool.query(`
             UPDATE tracking.stations s
             SET status = 'OFFLINE'
