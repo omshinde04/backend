@@ -19,20 +19,19 @@ app.set("trust proxy", 1);
    MIDDLEWARE
 ============================= */
 
-// ✅ Fixed CORS (Allows PUT, DELETE, OPTIONS)
+// ✅ Proper CORS (PUT, DELETE supported)
 app.use(cors({
-    origin: "*", // Replace with frontend URL in production if needed
+    origin: "*", // You can restrict to frontend URL later
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-// ✅ Handle preflight properly
-app.options("*", cors());
+// ❌ Removed app.options("*", cors()); (Not needed, caused crash)
 
-// ✅ Compression for performance
+// ✅ Compression
 app.use(compression());
 
-// ✅ JSON parser with safe limit
+// ✅ JSON Parser
 app.use(express.json({ limit: "1mb" }));
 
 /* =============================
@@ -41,14 +40,14 @@ app.use(express.json({ limit: "1mb" }));
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
-    max: 20, // increased for production stability
+    max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000
 });
 
 console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
 
-// Proper connection test
+// DB Test
 (async () => {
     try {
         await pool.query("SELECT 1");
@@ -123,7 +122,7 @@ cron.schedule("* * * * *", async () => {
 });
 
 /* =============================
-   ROOT TEST ROUTE
+   ROOT ROUTE
 ============================= */
 app.get("/", (req, res) => {
     res.send("Station Tracker Backend Running 🚀 (PostgreSQL)");
