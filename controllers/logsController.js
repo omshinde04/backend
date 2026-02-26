@@ -22,7 +22,6 @@ exports.getLogs = async (req, res) => {
             });
         }
 
-        // Normalize
         stationId = stationId.trim();
 
         const safeLimit = Math.min(parseInt(limit) || 20, 100);
@@ -31,10 +30,10 @@ exports.getLogs = async (req, res) => {
         let values = [stationId];
         let index = 2;
 
-        // Validate ISO date inputs
+        // Validate FROM date
         if (from) {
             const fromDate = new Date(from);
-            if (isNaN(fromDate)) {
+            if (isNaN(fromDate.getTime())) {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid 'from' date"
@@ -44,9 +43,10 @@ exports.getLogs = async (req, res) => {
             values.push(fromDate.toISOString());
         }
 
+        // Validate TO date
         if (to) {
             const toDate = new Date(to);
-            if (isNaN(toDate)) {
+            if (isNaN(toDate.getTime())) {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid 'to' date"
@@ -63,7 +63,7 @@ exports.getLogs = async (req, res) => {
 
         if (lastTime) {
             const cursorDate = new Date(lastTime);
-            if (!isNaN(cursorDate)) {
+            if (!isNaN(cursorDate.getTime())) {
                 conditions.push(`recorded_at < $${index++}`);
                 values.push(cursorDate.toISOString());
             }
@@ -126,14 +126,22 @@ exports.exportLogsCSV = async (req, res) => {
         let values = [stationId];
         let index = 2;
 
+        // Validate FROM
         if (from) {
-            conditions.push(`recorded_at >= $${index++}`);
-            values.push(new Date(from).toISOString());
+            const fromDate = new Date(from);
+            if (!isNaN(fromDate.getTime())) {
+                conditions.push(`recorded_at >= $${index++}`);
+                values.push(fromDate.toISOString());
+            }
         }
 
+        // Validate TO
         if (to) {
-            conditions.push(`recorded_at <= $${index++}`);
-            values.push(new Date(to).toISOString());
+            const toDate = new Date(to);
+            if (!isNaN(toDate.getTime())) {
+                conditions.push(`recorded_at <= $${index++}`);
+                values.push(toDate.toISOString());
+            }
         }
 
         if (status) {
@@ -159,6 +167,15 @@ exports.exportLogsCSV = async (req, res) => {
 
         const result = await pool.query(query, values);
 
+        // If no logs
+        if (!result.rows.length) {
+            return res.status(200).json({
+                success: true,
+                message: "No logs found",
+                data: []
+            });
+        }
+
         const fields = [
             "station_id",
             "latitude",
@@ -171,10 +188,13 @@ exports.exportLogsCSV = async (req, res) => {
         const parser = new Parser({ fields });
         const csv = parser.parse(result.rows);
 
-        res.header("Content-Type", "text/csv");
-        res.attachment(`logs-${stationId}-${Date.now()}.csv`);
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename=logs-${stationId}-${Date.now()}.csv`
+        );
 
-        return res.send(csv);
+        return res.status(200).send(csv);
 
     } catch (error) {
         console.error("CSV Export Error:", error);
