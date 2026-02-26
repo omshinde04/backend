@@ -3,18 +3,31 @@ const { getDistance } = require("geolib");
 
 exports.batchUpdateLocation = async (req, res) => {
 
+    console.log("========== BATCH HIT ==========");
+    console.log("Headers:", req.headers);
+    console.log("Body:", req.body);
+
     const client = await pool.connect();
 
     try {
         const { records } = req.body;
         const stationId = req.stationId;
-        console.log("Batch request from:", stationId);
+
+        console.log("Decoded stationId from middleware:", stationId);
+        console.log("Records length:", Array.isArray(records) ? records.length : "NOT ARRAY");
+
+        if (!stationId) {
+            console.log("❌ stationId missing from token");
+            return res.status(401).json({ message: "stationId missing in token" });
+        }
 
         if (!Array.isArray(records) || records.length === 0) {
+            console.log("❌ Records invalid");
             return res.status(400).json({ message: "Records array required" });
         }
 
         if (records.length > 100) {
+            console.log("❌ Batch too large");
             return res.status(400).json({ message: "Batch size too large" });
         }
 
@@ -25,8 +38,11 @@ exports.batchUpdateLocation = async (req, res) => {
             [stationId]
         );
 
+        console.log("Station DB result rows:", stationResult.rows.length);
+
         if (!stationResult.rows.length) {
-            return res.status(404).json({ message: "Station not found" });
+            console.log("❌ Station not found in DB:", stationId);
+            return res.status(404).json({ message: "Station not found in DB" });
         }
 
         const station = stationResult.rows[0];
@@ -47,7 +63,10 @@ exports.batchUpdateLocation = async (req, res) => {
             const lat = Number(record.latitude);
             const lng = Number(record.longitude);
 
-            if (!lat || !lng || isNaN(lat) || isNaN(lng)) continue;
+            if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+                console.log("Skipping invalid record:", record);
+                continue;
+            }
 
             const distance = getDistance(
                 {
@@ -62,7 +81,6 @@ exports.batchUpdateLocation = async (req, res) => {
                     ? "OUTSIDE"
                     : "INSIDE";
 
-            // ✅ INSERT ONLY WHEN OUTSIDE
             if (status === "OUTSIDE") {
                 insertValues.push(
                     `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
@@ -77,15 +95,15 @@ exports.batchUpdateLocation = async (req, res) => {
                 );
             }
 
-            // Always update latest state
             lastStatus = status;
             lastDistance = distance;
             lastLat = lat;
             lastLng = lng;
         }
 
-        // Insert OUTSIDE logs only
         if (insertValues.length > 0) {
+            console.log("Inserting OUTSIDE logs:", insertValues.length);
+
             await client.query(
                 `INSERT INTO tracking.location_logs
                  (station_id, latitude, longitude, distance_meters, status)
@@ -94,7 +112,8 @@ exports.batchUpdateLocation = async (req, res) => {
             );
         }
 
-        // Always update current location
+        console.log("Updating current location");
+
         await client.query(
             `INSERT INTO tracking.current_location
              (station_id, latitude, longitude, distance_meters, status, updated_at)
@@ -118,6 +137,8 @@ exports.batchUpdateLocation = async (req, res) => {
 
         await client.query("COMMIT");
 
+        console.log("✅ Batch sync successful for:", stationId);
+
         const io = req.app.get("io");
         if (io) {
             io.emit("locationUpdate", {
@@ -125,28 +146,28 @@ exports.batchUpdateLocation = async (req, res) => {
                 latitude: lastLat,
                 longitude: lastLng,
                 distance: lastDistance,
-                status: lastStatus,
-                assignedLatitude: station.assigned_latitude,
-                assignedLongitude: station.assigned_longitude,
-                allowedRadiusMeters: station.allowed_radius_meters
+                status: lastStatus
             });
         }
 
         res.json({
             message: "Batch sync successful",
-            count: insertValues.length // now this counts only OUTSIDE records
+            count: insertValues.length
         });
 
     } catch (error) {
 
         await client.query("ROLLBACK");
-        console.error("Batch Location Error:", error);
+
+        console.error("❌ Batch Location Error FULL:", error);
 
         res.status(500).json({
-            message: "Server error during batch sync"
+            message: "Server error during batch sync",
+            error: error.message
         });
 
     } finally {
         client.release();
+        console.log("========== BATCH END ==========");
     }
 };
