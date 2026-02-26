@@ -9,12 +9,18 @@ exports.updateLocation = async (req, res) => {
         const lat = Number(latitude);
         const lng = Number(longitude);
 
-        if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+        if (
+            lat === undefined ||
+            lng === undefined ||
+            isNaN(lat) ||
+            isNaN(lng) ||
+            lat < -90 || lat > 90 ||
+            lng < -180 || lng > 180
+        ) {
             return res.status(400).json({
-                message: "Valid latitude and longitude required"
+                message: "Invalid latitude or longitude range"
             });
         }
-
         // Fetch only required columns (optimized)
         const stationResult = await pool.query(
             `SELECT assigned_latitude, assigned_longitude, allowed_radius_meters
