@@ -1,7 +1,7 @@
 const pool = require("../config/db");
 
 /* =====================================================
-   GET STATIONS (Search + District Filter + Pagination)
+   GET STATIONS (Search + District + Pagination)
 ===================================================== */
 exports.getStations = async (req, res) => {
     try {
@@ -20,13 +20,11 @@ exports.getStations = async (req, res) => {
         let values = [];
         let index = 1;
 
-        // Search by station_id (partial match)
         if (search) {
             conditions.push(`station_id ILIKE $${index++}`);
             values.push(`%${search.trim()}%`);
         }
 
-        // Filter by district code (first 2 digits)
         if (district) {
             conditions.push(`LEFT(station_id, 2) = $${index++}`);
             values.push(district);
@@ -37,7 +35,18 @@ exports.getStations = async (req, res) => {
                 ? `WHERE ${conditions.join(" AND ")}`
                 : "";
 
-        const query = `
+        // 🔥 Get total count for pagination
+        const countQuery = `
+            SELECT COUNT(*) 
+            FROM tracking.stations
+            ${whereClause}
+        `;
+
+        const countResult = await pool.query(countQuery, values);
+        const total = parseInt(countResult.rows[0].count);
+
+        // 🔥 Fetch paginated data
+        const dataQuery = `
             SELECT *
             FROM tracking.stations
             ${whereClause}
@@ -46,15 +55,16 @@ exports.getStations = async (req, res) => {
             OFFSET $${index}
         `;
 
-        values.push(limit, offset);
+        const dataValues = [...values, limit, offset];
 
-        const result = await pool.query(query, values);
+        const result = await pool.query(dataQuery, dataValues);
 
         return res.status(200).json({
             success: true,
             page,
             limit,
-            count: result.rows.length,
+            total,
+            totalPages: Math.ceil(total / limit),
             data: result.rows
         });
 
@@ -90,7 +100,7 @@ exports.createStation = async (req, res) => {
 
         station_id = station_id.trim();
 
-        // Validate station_id format (2 district digits + 3 numbers)
+        // 🔥 Validate 5 digit format
         if (!/^\d{5}$/.test(station_id)) {
             return res.status(400).json({
                 success: false,
@@ -151,19 +161,19 @@ exports.updateStation = async (req, res) => {
     try {
         const { id } = req.params;
 
-        let {
-            assigned_latitude,
-            assigned_longitude,
-            allowed_radius_meters,
-            status
-        } = req.body;
-
         if (!id) {
             return res.status(400).json({
                 success: false,
                 message: "Station ID required"
             });
         }
+
+        let {
+            assigned_latitude,
+            assigned_longitude,
+            allowed_radius_meters,
+            status
+        } = req.body;
 
         const lat = parseFloat(assigned_latitude);
         const lng = parseFloat(assigned_longitude);
@@ -216,12 +226,54 @@ exports.updateStation = async (req, res) => {
         });
 
     } catch (error) {
-
         console.error("Update Station Error:", error.message);
 
         return res.status(500).json({
             success: false,
             message: "Failed to update station"
+        });
+    }
+};
+
+
+/* =====================================================
+   DELETE STATION
+===================================================== */
+exports.deleteStation = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Station ID required"
+            });
+        }
+
+        const result = await pool.query(`
+            DELETE FROM tracking.stations
+            WHERE station_id = $1
+            RETURNING station_id
+        `, [id]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Station not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Station deleted successfully"
+        });
+
+    } catch (error) {
+        console.error("Delete Station Error:", error.message);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to delete station"
         });
     }
 };
