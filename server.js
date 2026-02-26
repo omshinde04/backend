@@ -63,8 +63,8 @@ app.set("db", pool);
    ROUTES
 ============================= */
 app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/location", require("./routes/locationRoutes"));
 app.use("/api/location", require("./routes/batchRoutes"));
+app.use("/api/location", require("./routes/locationRoutes"));
 app.use("/api/heartbeat", require("./routes/heartbeatRoutes"));
 app.use("/api/stations", require("./routes/stationRoutes"));
 app.use("/api/dashboard", require("./routes/loginRoute"));
