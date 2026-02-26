@@ -7,5 +7,6 @@ router.get("/", adminAuth, controller.getStations);
 router.post("/", adminAuth, controller.createStation);
 router.put("/:id", adminAuth, controller.updateStation);
 router.delete("/:id", controller.deleteStation);
+router.post("/bulk", controller.bulkCreateStations);
 
 module.exports = router;
