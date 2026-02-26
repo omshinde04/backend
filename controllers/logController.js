@@ -1,8 +1,12 @@
 exports.clientLog = async (req, res) => {
-
     try {
 
-        const { stationId, level, message } = req.body;
+        const {
+            stationId,
+            level,
+            message,
+            timestamp
+        } = req.body;
 
         if (!stationId || !level || !message) {
             return res.status(400).json({
@@ -11,19 +15,41 @@ exports.clientLog = async (req, res) => {
         }
 
         const safeLevel = level.toUpperCase();
+        const clientIP =
+            req.headers["x-forwarded-for"] ||
+            req.socket.remoteAddress ||
+            "UNKNOWN";
 
-        // This is what will appear in Render logs
+        const userAgent = req.headers["user-agent"] || "UNKNOWN";
+
+        const serverTime = new Date().toISOString();
+        const clientTime = timestamp || "NOT_PROVIDED";
+
+        const logObject = {
+            stationId,
+            level: safeLevel,
+            message,
+            clientTime,
+            serverTime,
+            clientIP,
+            userAgent
+        };
+
+        // Structured logging (best practice)
+        console.log("[CLIENT_LOG]", JSON.stringify(logObject));
+
+        // Optional: Pretty readable version
         console.log(
-            `[CLIENT LOG] Station: ${stationId} | ${safeLevel} | ${message}`
+            `[CLIENT LOG] ${serverTime} | Station: ${stationId} | ${safeLevel} | ${message}`
         );
 
-        res.json({ success: true });
+        return res.json({ success: true });
 
     } catch (error) {
 
         console.error("Client Log Error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             message: "Failed to log message"
         });
     }

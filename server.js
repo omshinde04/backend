@@ -62,7 +62,7 @@ app.use("/api/geocode", require("./routes/geocodeRoute"));
 app.use("/api/analytics", require("./routes/analyticsRoute"));
 app.use("/api/logs", require("./routes/logsRoutes"));
 app.use("/api", require("./routes/logRoutes"));
-
+app.use("/api/admin/stations", require("./routes/stationsAdminRoutes"));
 
 
 /* =============================
