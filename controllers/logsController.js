@@ -2,26 +2,24 @@ const pool = require("../config/db");
 
 exports.getLogs = async (req, res) => {
     try {
-        let {
+
+        const {
             stationId,
-            page = 1,
-            limit = 50,
             from,
             to,
-            status
+            status,
+            lastTime,
+            limit = 20
         } = req.query;
-
-        page = parseInt(page);
-        limit = parseInt(limit);
 
         if (!stationId) {
             return res.status(400).json({
                 success: false,
-                message: "stationId is required"
+                message: "stationId required"
             });
         }
 
-        const offset = (page - 1) * limit;
+        const safeLimit = Math.min(parseInt(limit) || 20, 100);
 
         let conditions = ["station_id = $1"];
         let values = [stationId];
@@ -42,45 +40,33 @@ exports.getLogs = async (req, res) => {
             values.push(status);
         }
 
-        const whereClause = conditions.length
-            ? `WHERE ${conditions.join(" AND ")}`
-            : "";
+        if (lastTime) {
+            conditions.push(`recorded_at < $${index++}`);
+            values.push(lastTime);
+        }
 
-        const logsQuery = `
-            SELECT 
-                id,
-                station_id,
-                latitude,
-                longitude,
-                distance_meters,
-                status,
-                recorded_at
+        const whereClause = `WHERE ${conditions.join(" AND ")}`;
+
+        const query = `
+            SELECT id,
+                   station_id,
+                   latitude,
+                   longitude,
+                   distance_meters,
+                   status,
+                   recorded_at
             FROM tracking.location_logs
             ${whereClause}
             ORDER BY recorded_at DESC
-            LIMIT $${index++} OFFSET $${index}
+            LIMIT ${safeLimit}
         `;
 
-        values.push(limit);
-        values.push(offset);
-
-        const logs = await pool.query(logsQuery, values);
-
-        const countQuery = `
-            SELECT COUNT(*) 
-            FROM tracking.location_logs
-            ${whereClause}
-        `;
-
-        const countResult = await pool.query(countQuery, values.slice(0, index - 2));
+        const result = await pool.query(query, values);
 
         return res.json({
             success: true,
-            page,
-            limit,
-            total: parseInt(countResult.rows[0].count),
-            totalPages: Math.ceil(countResult.rows[0].count / limit),
-            data: logs.rows
+            data: result.rows,
+            hasMore: result.rows.length === safeLimit
         });
 
     } catch (error) {
