@@ -17,17 +17,14 @@ exports.batchUpdateLocation = async (req, res) => {
         console.log("Records length:", Array.isArray(records) ? records.length : "NOT ARRAY");
 
         if (!stationId) {
-            console.log("❌ stationId missing from token");
             return res.status(401).json({ message: "stationId missing in token" });
         }
 
         if (!Array.isArray(records) || records.length === 0) {
-            console.log("❌ Records invalid");
             return res.status(400).json({ message: "Records array required" });
         }
 
         if (records.length > 100) {
-            console.log("❌ Batch too large");
             return res.status(400).json({ message: "Batch size too large" });
         }
 
@@ -38,16 +35,26 @@ exports.batchUpdateLocation = async (req, res) => {
             [stationId]
         );
 
-        console.log("Station DB result rows:", stationResult.rows.length);
-
         if (!stationResult.rows.length) {
-            console.log("❌ Station not found in DB:", stationId);
             return res.status(404).json({ message: "Station not found in DB" });
         }
 
         const station = stationResult.rows[0];
 
         await client.query("BEGIN");
+
+        // 🔥 Get last log once (IMPORTANT)
+        const lastLogResult = await client.query(
+            `SELECT status, created_at
+             FROM tracking.location_logs
+             WHERE station_id = $1
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [stationId]
+        );
+
+        let previousStatus = lastLogResult.rows[0]?.status || null;
+        let previousTime = lastLogResult.rows[0]?.created_at || null;
 
         const insertValues = [];
         const insertParams = [];
@@ -64,7 +71,6 @@ exports.batchUpdateLocation = async (req, res) => {
             const lng = Number(record.longitude);
 
             if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
-                console.log("Skipping invalid record:", record);
                 continue;
             }
 
@@ -81,7 +87,28 @@ exports.batchUpdateLocation = async (req, res) => {
                     ? "OUTSIDE"
                     : "INSIDE";
 
+            let shouldInsert = false;
+
+            // 🔴 ALWAYS store OUTSIDE
             if (status === "OUTSIDE") {
+                shouldInsert = true;
+            } else {
+                // 🟢 INSIDE logic control
+
+                const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+                if (!previousStatus) {
+                    shouldInsert = true;
+                } else if (previousStatus === "OUTSIDE") {
+                    // OUTSIDE → INSIDE transition
+                    shouldInsert = true;
+                } else if (previousTime && previousTime < tenMinutesAgo) {
+                    // heartbeat after 10 mins
+                    shouldInsert = true;
+                }
+            }
+
+            if (shouldInsert) {
                 insertValues.push(
                     `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
                 );
@@ -93,6 +120,10 @@ exports.batchUpdateLocation = async (req, res) => {
                     distance,
                     status
                 );
+
+                // update memory state
+                previousStatus = status;
+                previousTime = new Date();
             }
 
             lastStatus = status;
@@ -102,8 +133,6 @@ exports.batchUpdateLocation = async (req, res) => {
         }
 
         if (insertValues.length > 0) {
-            console.log("Inserting OUTSIDE logs:", insertValues.length);
-
             await client.query(
                 `INSERT INTO tracking.location_logs
                  (station_id, latitude, longitude, distance_meters, status)
@@ -112,7 +141,7 @@ exports.batchUpdateLocation = async (req, res) => {
             );
         }
 
-        console.log("Updating current location");
+        // 🔥 DO NOT TOUCH BELOW (production logic intact)
 
         await client.query(
             `INSERT INTO tracking.current_location
@@ -136,8 +165,6 @@ exports.batchUpdateLocation = async (req, res) => {
         );
 
         await client.query("COMMIT");
-
-        console.log("✅ Batch sync successful for:", stationId);
 
         const io = req.app.get("io");
         if (io) {

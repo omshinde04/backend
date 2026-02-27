@@ -62,12 +62,49 @@ exports.updateLocation = async (req, res) => {
             [stationId, lat, lng, distance, status]
         );
 
-        await pool.query(
-            `INSERT INTO tracking.location_logs
-             (station_id, latitude, longitude, distance_meters, status)
-             VALUES ($1,$2,$3,$4,$5)`,
-            [stationId, lat, lng, distance, status]
-        );
+        let shouldInsert = false;
+
+        // 🔴 Always store OUTSIDE
+        if (status === "OUTSIDE") {
+            shouldInsert = true;
+        } else {
+            // 🟢 INSIDE → Apply condition
+
+            const lastLog = await pool.query(
+                `SELECT status, created_at
+         FROM tracking.location_logs
+         WHERE station_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+                [stationId]
+            );
+
+            if (!lastLog.rows.length) {
+                shouldInsert = true;
+            } else {
+                const previousStatus = lastLog.rows[0].status;
+                const previousTime = lastLog.rows[0].created_at;
+
+                const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+                if (previousStatus === "OUTSIDE") {
+                    // OUTSIDE → INSIDE transition
+                    shouldInsert = true;
+                } else if (previousTime < tenMinutesAgo) {
+                    // Heartbeat every 10 mins
+                    shouldInsert = true;
+                }
+            }
+        }
+
+        if (shouldInsert) {
+            await pool.query(
+                `INSERT INTO tracking.location_logs
+         (station_id, latitude, longitude, distance_meters, status)
+         VALUES ($1,$2,$3,$4,$5)`,
+                [stationId, lat, lng, distance, status]
+            );
+        }
 
         await pool.query(
             `UPDATE tracking.stations
