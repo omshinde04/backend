@@ -47,24 +47,6 @@ exports.batchUpdateLocation = async (req, res) => {
 
         const station = stationResult.rows[0];
 
-        // 🔥 Get last log for throttling logic
-        const lastLogResult = await client.query(
-            `SELECT status, created_at
-             FROM tracking.location_logs
-             WHERE station_id = $1
-             ORDER BY created_at DESC
-             LIMIT 1`,
-            [stationId]
-        );
-
-        let lastLoggedStatus = null;
-        let lastLoggedTime = null;
-
-        if (lastLogResult.rows.length > 0) {
-            lastLoggedStatus = lastLogResult.rows[0].status;
-            lastLoggedTime = new Date(lastLogResult.rows[0].created_at);
-        }
-
         await client.query("BEGIN");
 
         const insertValues = [];
@@ -99,31 +81,7 @@ exports.batchUpdateLocation = async (req, res) => {
                     ? "OUTSIDE"
                     : "INSIDE";
 
-            let shouldLog = false;
-
-            // ✅ Always log OUTSIDE
             if (status === "OUTSIDE") {
-                shouldLog = true;
-            }
-
-            // ✅ INSIDE throttling logic
-            if (status === "INSIDE") {
-                const now = new Date();
-
-                const tenMinutesPassed =
-                    lastLoggedTime &&
-                    (now - lastLoggedTime) > (10 * 60 * 1000);
-
-                const statusChanged =
-                    lastLoggedStatus &&
-                    lastLoggedStatus !== status;
-
-                if (!lastLoggedStatus || statusChanged || tenMinutesPassed) {
-                    shouldLog = true;
-                }
-            }
-
-            if (shouldLog) {
                 insertValues.push(
                     `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
                 );
@@ -135,9 +93,6 @@ exports.batchUpdateLocation = async (req, res) => {
                     distance,
                     status
                 );
-
-                lastLoggedStatus = status;
-                lastLoggedTime = new Date();
             }
 
             lastStatus = status;
@@ -147,7 +102,7 @@ exports.batchUpdateLocation = async (req, res) => {
         }
 
         if (insertValues.length > 0) {
-            console.log("Inserting logs:", insertValues.length);
+            console.log("Inserting OUTSIDE logs:", insertValues.length);
 
             await client.query(
                 `INSERT INTO tracking.location_logs
