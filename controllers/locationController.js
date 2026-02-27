@@ -74,7 +74,7 @@ exports.updateLocation = async (req, res) => {
                 `SELECT status, recorded_at
          FROM tracking.location_logs
          WHERE station_id = $1
-         ORDER BY created_at DESC
+         ORDER BY recorded_at  DESC
          LIMIT 1`,
                 [stationId]
             );
