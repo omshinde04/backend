@@ -2,6 +2,8 @@ const pool = require("../config/db");
 const { getDistance } = require("geolib");
 
 exports.updateLocation = async (req, res) => {
+    const client = await pool.connect();
+
     try {
         const { latitude, longitude } = req.body;
         const stationId = req.stationId;
@@ -21,8 +23,9 @@ exports.updateLocation = async (req, res) => {
                 message: "Invalid latitude or longitude range"
             });
         }
-        // Fetch only required columns (optimized)
-        const stationResult = await pool.query(
+
+        // Fetch station configuration
+        const stationResult = await client.query(
             `SELECT assigned_latitude, assigned_longitude, allowed_radius_meters
              FROM tracking.stations 
              WHERE station_id = $1`,
@@ -46,9 +49,10 @@ exports.updateLocation = async (req, res) => {
         const status =
             distance > station.allowed_radius_meters ? "OUTSIDE" : "INSIDE";
 
-        await pool.query("BEGIN");
+        await client.query("BEGIN");
 
-        await pool.query(
+        // Always update current location
+        await client.query(
             `INSERT INTO tracking.current_location
              (station_id, latitude, longitude, distance_meters, status, updated_at)
              VALUES ($1,$2,$3,$4,$5,NOW())
@@ -62,21 +66,61 @@ exports.updateLocation = async (req, res) => {
             [stationId, lat, lng, distance, status]
         );
 
-        await pool.query(
-            `INSERT INTO tracking.location_logs
-             (station_id, latitude, longitude, distance_meters, status)
-             VALUES ($1,$2,$3,$4,$5)`,
-            [stationId, lat, lng, distance, status]
+        // 🔥 Fetch last log for INSIDE throttling
+        const lastLogResult = await client.query(
+            `SELECT status, created_at
+             FROM tracking.location_logs
+             WHERE station_id = $1
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [stationId]
         );
 
-        await pool.query(
+        let shouldLog = false;
+
+        // Always log OUTSIDE
+        if (status === "OUTSIDE") {
+            shouldLog = true;
+        }
+
+        // INSIDE throttling logic
+        if (status === "INSIDE") {
+
+            if (lastLogResult.rows.length === 0) {
+                shouldLog = true;
+            } else {
+                const lastStatus = lastLogResult.rows[0].status;
+                const lastTime = new Date(lastLogResult.rows[0].created_at);
+                const now = new Date();
+
+                const tenMinutesPassed =
+                    (now - lastTime) > (10 * 60 * 1000);
+
+                const statusChanged = lastStatus !== status;
+
+                if (statusChanged || tenMinutesPassed) {
+                    shouldLog = true;
+                }
+            }
+        }
+
+        if (shouldLog) {
+            await client.query(
+                `INSERT INTO tracking.location_logs
+                 (station_id, latitude, longitude, distance_meters, status)
+                 VALUES ($1,$2,$3,$4,$5)`,
+                [stationId, lat, lng, distance, status]
+            );
+        }
+
+        await client.query(
             `UPDATE tracking.stations
              SET status = $1, updated_at = NOW()
              WHERE station_id = $2`,
             [status, stationId]
         );
 
-        await pool.query("COMMIT");
+        await client.query("COMMIT");
 
         const io = req.app.get("io");
         if (io) {
@@ -99,11 +143,14 @@ exports.updateLocation = async (req, res) => {
         });
 
     } catch (error) {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
         console.error("Location Update Error:", error);
         res.status(500).json({ message: "Server error" });
+    } finally {
+        client.release();
     }
 };
+
 
 /* =========================================
    ✅ NEW: GET ALL STATIONS
