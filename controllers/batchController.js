@@ -43,18 +43,17 @@ exports.batchUpdateLocation = async (req, res) => {
 
         await client.query("BEGIN");
 
-        // 🔥 Get last log once (IMPORTANT)
         const lastLogResult = await client.query(
-            `SELECT status, created_at
-             FROM tracking.location_logs
-             WHERE station_id = $1
-             ORDER BY created_at DESC
-             LIMIT 1`,
+            `SELECT status, recorded_at
+     FROM tracking.location_logs
+     WHERE station_id = $1
+     ORDER BY recorded_at DESC
+     LIMIT 1`,
             [stationId]
         );
 
         let previousStatus = lastLogResult.rows[0]?.status || null;
-        let previousTime = lastLogResult.rows[0]?.created_at || null;
+        let previousTime = lastLogResult.rows[0]?.recorded_at || null;
 
         const insertValues = [];
         const insertParams = [];

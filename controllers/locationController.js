@@ -71,7 +71,7 @@ exports.updateLocation = async (req, res) => {
             // 🟢 INSIDE → Apply condition
 
             const lastLog = await pool.query(
-                `SELECT status, created_at
+                `SELECT status, recorded_at
          FROM tracking.location_logs
          WHERE station_id = $1
          ORDER BY created_at DESC
@@ -83,7 +83,7 @@ exports.updateLocation = async (req, res) => {
                 shouldInsert = true;
             } else {
                 const previousStatus = lastLog.rows[0].status;
-                const previousTime = lastLog.rows[0].created_at;
+                const previousTime = lastLog.rows[0].recorded_at;
 
                 const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
