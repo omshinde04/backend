@@ -2,8 +2,6 @@ const pool = require("../config/db");
 const { getDistance } = require("geolib");
 
 exports.updateLocation = async (req, res) => {
-    const client = await pool.connect();
-
     try {
         const { latitude, longitude } = req.body;
         const stationId = req.stationId;
@@ -23,9 +21,8 @@ exports.updateLocation = async (req, res) => {
                 message: "Invalid latitude or longitude range"
             });
         }
-
-        // 🔥 Fetch station configuration
-        const stationResult = await client.query(
+        // Fetch only required columns (optimized)
+        const stationResult = await pool.query(
             `SELECT assigned_latitude, assigned_longitude, allowed_radius_meters
              FROM tracking.stations 
              WHERE station_id = $1`,
@@ -47,51 +44,11 @@ exports.updateLocation = async (req, res) => {
         );
 
         const status =
-            distance > station.allowed_radius_meters
-                ? "OUTSIDE"
-                : "INSIDE";
+            distance > station.allowed_radius_meters ? "OUTSIDE" : "INSIDE";
 
-        // 🔥 Fetch last log entry (for throttling logic)
-        const lastLogResult = await client.query(
-            `SELECT status, created_at
-             FROM tracking.location_logs
-             WHERE station_id = $1
-             ORDER BY created_at DESC
-             LIMIT 1`,
-            [stationId]
-        );
+        await pool.query("BEGIN");
 
-        let shouldLog = false;
-
-        if (status === "OUTSIDE") {
-            // ✅ Always log OUTSIDE
-            shouldLog = true;
-        }
-
-        if (status === "INSIDE") {
-
-            if (lastLogResult.rows.length === 0) {
-                shouldLog = true;
-            } else {
-                const lastStatus = lastLogResult.rows[0].status;
-                const lastTime = new Date(lastLogResult.rows[0].created_at);
-                const now = new Date();
-
-                const tenMinutesPassed =
-                    (now - lastTime) > (10 * 60 * 1000);
-
-                const statusChanged = lastStatus !== status;
-
-                if (statusChanged || tenMinutesPassed) {
-                    shouldLog = true;
-                }
-            }
-        }
-
-        await client.query("BEGIN");
-
-        // ✅ Always update current location
-        await client.query(
+        await pool.query(
             `INSERT INTO tracking.current_location
              (station_id, latitude, longitude, distance_meters, status, updated_at)
              VALUES ($1,$2,$3,$4,$5,NOW())
@@ -105,24 +62,21 @@ exports.updateLocation = async (req, res) => {
             [stationId, lat, lng, distance, status]
         );
 
-        // ✅ Conditional logging
-        if (shouldLog) {
-            await client.query(
-                `INSERT INTO tracking.location_logs
-                 (station_id, latitude, longitude, distance_meters, status)
-                 VALUES ($1,$2,$3,$4,$5)`,
-                [stationId, lat, lng, distance, status]
-            );
-        }
+        await pool.query(
+            `INSERT INTO tracking.location_logs
+             (station_id, latitude, longitude, distance_meters, status)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [stationId, lat, lng, distance, status]
+        );
 
-        await client.query(
+        await pool.query(
             `UPDATE tracking.stations
              SET status = $1, updated_at = NOW()
              WHERE station_id = $2`,
             [status, stationId]
         );
 
-        await client.query("COMMIT");
+        await pool.query("COMMIT");
 
         const io = req.app.get("io");
         if (io) {
@@ -145,10 +99,46 @@ exports.updateLocation = async (req, res) => {
         });
 
     } catch (error) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         console.error("Location Update Error:", error);
         res.status(500).json({ message: "Server error" });
-    } finally {
-        client.release();
+    }
+};
+
+/* =========================================
+   ✅ NEW: GET ALL STATIONS
+========================================= */
+exports.getAllStations = async (req, res) => {
+    try {
+
+        const result = await pool.query(`
+            SELECT 
+                s.station_id,
+                s.assigned_latitude,
+                s.assigned_longitude,
+                s.allowed_radius_meters,
+                cl.latitude,
+                cl.longitude,
+                cl.distance_meters,
+                cl.updated_at,
+                CASE 
+                    WHEN cl.updated_at IS NULL THEN 'OFFLINE'
+                    WHEN NOW() - cl.updated_at > INTERVAL '2 minutes' THEN 'OFFLINE'
+                    ELSE cl.status
+                END AS status
+            FROM tracking.stations s
+            LEFT JOIN tracking.current_location cl
+            ON s.station_id = cl.station_id
+            ORDER BY s.station_id
+        `);
+
+        res.json({
+            count: result.rows.length,
+            data: result.rows
+        });
+
+    } catch (error) {
+        console.error("Fetch Stations Error:", error);
+        res.status(500).json({ message: "Server error" });
     }
 };
