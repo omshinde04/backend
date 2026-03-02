@@ -9,6 +9,8 @@ exports.updateLocation = async (req, res) => {
         const lat = Number(latitude);
         const lng = Number(longitude);
 
+        console.log("Received Lat/Lng:", lat, lng); // 👈 ADD HERE
+
         if (
             lat === undefined ||
             lng === undefined ||
