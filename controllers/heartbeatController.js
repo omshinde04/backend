@@ -1,7 +1,24 @@
 const pool = require("../config/db");
+
 exports.heartbeat = async (req, res) => {
     try {
         const stationId = req.stationId;
+
+        // 🔍 Capture Debug Info
+        const clientIP =
+            req.headers["cf-connecting-ip"] ||
+            req.headers["x-forwarded-for"] ||
+            req.socket.remoteAddress ||
+            "UNKNOWN";
+
+        const userAgent = req.headers["user-agent"] || "UNKNOWN";
+
+        const serverTime = new Date().toISOString();
+
+        // 🔥 Debug Logging (Structured)
+        console.log(
+            `[HEARTBEAT] ${serverTime} | Station: ${stationId} | IP: ${clientIP} | UA: ${userAgent}`
+        );
 
         await pool.query(
             `UPDATE tracking.stations
@@ -9,7 +26,7 @@ exports.heartbeat = async (req, res) => {
              WHERE station_id = $1`,
             [stationId]
         );
-        console.log("Heartbeat received from:", stationId);
+
         const io = req.app.get("io");
 
         if (io) {
