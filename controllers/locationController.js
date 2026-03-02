@@ -9,7 +9,18 @@ exports.updateLocation = async (req, res) => {
         const lat = Number(latitude);
         const lng = Number(longitude);
 
-        console.log("Received Lat/Lng:", lat, lng); // 👈 ADD HERE
+        console.log(
+            "Timestamp:",
+            Date.now(),
+            "| Station:",
+            stationId,
+            "| Lat/Lng:",
+            lat,
+            lng
+        );
+
+        console.log("Received Lat/Lng:", lat, lng);
+
 
         if (
             lat === undefined ||
