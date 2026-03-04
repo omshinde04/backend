@@ -173,7 +173,7 @@ exports.getAllStations = async (req, res) => {
                 cl.updated_at,
                 CASE 
                     WHEN cl.updated_at IS NULL THEN 'OFFLINE'
-                    WHEN NOW() - cl.updated_at > INTERVAL '2 minutes' THEN 'OFFLINE'
+                    WHEN cl.updated_at < NOW() - INTERVAL '2 minutes' THEN 'OFFLINE'
                     ELSE cl.status
                 END AS status
             FROM tracking.stations s
