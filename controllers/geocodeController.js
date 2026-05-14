@@ -65,9 +65,11 @@ exports.reverseGeocode = async (req, res) => {
                     lon: lng
                 },
                 headers: {
-                    "User-Agent": "Railtail-Monitoring-System"
+                    "User-Agent": "Railtail-Monitoring-System",
+                    "Accept-Language": "en",
+                    "Referer": "https://station-dashboard-zeta.vercel.app"
                 },
-                timeout: 5000
+                timeout: 15000
             }
         );
 

@@ -34,12 +34,15 @@ app.use(compression());
 // ✅ JSON Parser
 app.use(express.json({ limit: "1mb" }));
 
-/* =============================
-   POSTGRES CONNECTION
-============================= */
+const isProduction = process.env.NODE_ENV === "production";
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
+
+    ssl: isProduction
+        ? { rejectUnauthorized: false }
+        : false,
+
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000
