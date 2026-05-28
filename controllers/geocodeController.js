@@ -1,21 +1,14 @@
 const axios = require("axios");
 
 /* ===============================
-   GEO CACHE
+   GEO CACHE (In-Memory)
 ================================= */
 
 const geoCache = new Map();
-const CACHE_TTL = 1000 * 60 * 60 * 24; // 24h
+const CACHE_TTL = 1000 * 60 * 60 * 24; // 24 hours
 
 /* ===============================
-   GLOBAL RATE LIMIT
-================================= */
-
-let lastApiCall = 0;
-const MIN_API_INTERVAL = 2000; // 2 seconds
-
-/* ===============================
-   CLEANUP CACHE
+   CLEANUP CACHE (Memory Safety)
 ================================= */
 
 setInterval(() => {
@@ -29,10 +22,11 @@ setInterval(() => {
         }
     }
 
-}, 1000 * 60 * 30);
+}, 1000 * 60 * 30); // every 30 mins
+
 
 /* ===============================
-   REVERSE GEOCODE
+   REVERSE GEOCODE API
 ================================= */
 
 exports.reverseGeocode = async (req, res) => {
@@ -54,10 +48,11 @@ exports.reverseGeocode = async (req, res) => {
 
         /* ===============================
            NORMALIZE COORDINATES
+           (Huge cache optimization)
         ================================= */
 
         const key =
-            `${Number(lat).toFixed(2)}-${Number(lng).toFixed(2)}`;
+            `${Number(lat).toFixed(3)}-${Number(lng).toFixed(3)}`;
 
         /* ===============================
            CACHE HIT
@@ -72,23 +67,7 @@ exports.reverseGeocode = async (req, res) => {
         }
 
         /* ===============================
-           GLOBAL RATE LIMIT
-        ================================= */
-
-        const now = Date.now();
-
-        if (now - lastApiCall < MIN_API_INTERVAL) {
-
-            return res.json({
-                display_name: "Loading location...",
-                cached: true
-            });
-        }
-
-        lastApiCall = now;
-
-        /* ===============================
-           NOMINATIM REQUEST
+           CALL NOMINATIM API
         ================================= */
 
         const response = await axios.get(
@@ -97,28 +76,39 @@ exports.reverseGeocode = async (req, res) => {
                 params: {
                     format: "json",
                     lat,
-                    lon: lng
+                    lon: lng,
+                    zoom: 18,
+                    addressdetails: 1
                 },
 
                 headers: {
-                    "User-Agent": "Railtail-Monitoring-System"
+                    "User-Agent": "Railtail-Monitoring-System",
+                    "Accept-Language": "en"
                 },
 
-                timeout: 5000
+                timeout: 8000
             }
         );
+
+        /* ===============================
+           EXTRACT ADDRESS
+        ================================= */
 
         const address =
             response.data.display_name || "Unknown location";
 
         /* ===============================
-           SAVE CACHE
+           SAVE TO CACHE
         ================================= */
 
         geoCache.set(key, {
             address,
             timestamp: Date.now()
         });
+
+        /* ===============================
+           SUCCESS RESPONSE
+        ================================= */
 
         return res.json({
             display_name: address,
@@ -130,21 +120,34 @@ exports.reverseGeocode = async (req, res) => {
         console.error("Geocode error:", error.message);
 
         /* ===============================
-           429 HANDLING
+           RATE LIMIT HANDLING
         ================================= */
 
         if (error.response?.status === 429) {
 
-            return res.json({
-                display_name:
-                    "Location temporarily unavailable",
-                cached: true
+            return res.status(429).json({
+                message:
+                    "Too many geocoding requests. Please wait a few seconds."
             });
         }
+
+        /* ===============================
+           TIMEOUT HANDLING
+        ================================= */
+
+        if (error.code === "ECONNABORTED") {
+
+            return res.status(504).json({
+                message: "Geocoding request timeout"
+            });
+        }
+
+        /* ===============================
+           GENERIC ERROR
+        ================================= */
 
         return res.status(500).json({
             message: "Geocoding failed"
         });
     }
-
 };
